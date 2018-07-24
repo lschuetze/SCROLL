@@ -1,12 +1,14 @@
 package scroll.internal.support
 
+import com.google.common.graph.GraphBuilder
+import com.google.common.graph.Graphs
+import com.google.common.graph.MutableGraph
 import scroll.internal.Compartment
 import scroll.internal.util.ReflectiveHelper
 
-import scala.reflect.{ClassTag, classTag}
-import com.google.common.graph.{GraphBuilder, Graphs, MutableGraph}
-
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
+import scala.reflect.classTag
 
 /**
   * Allows to add and check role constraints (Riehle constraints) to a compartment instance.
@@ -18,45 +20,42 @@ trait RoleConstraints {
   protected val roleEquivalents: MutableGraph[String] = GraphBuilder.directed().build[String]()
   protected val roleProhibitions: MutableGraph[String] = GraphBuilder.directed().build[String]()
 
-  private def isInstanceOf(mani: String, that: Any) =
-    ReflectiveHelper.simpleName(that.getClass.toString) == ReflectiveHelper.simpleName(mani)
-
-  private def checkImplications(player: Any, role: Any): Unit = {
-    roleImplications.nodes().asScala.filter(isInstanceOf(_, role)).toList match {
+  private[this] def checkImplications(player: AnyRef, role: AnyRef): Unit = {
+    roleImplications.nodes().asScala.filter(ReflectiveHelper.isInstanceOf(_, role)).toList match {
       case Nil => //done, thanks
       case list =>
         val allImplicitRoles = list.flatMap(Graphs.reachableNodes(roleImplications, _).asScala)
-        val allRoles = plays.getRoles(player).diff(Seq(player))
-        allImplicitRoles.foreach(r => if (!allRoles.exists(isInstanceOf(r, _))) {
+        val allRoles = plays.roles(player).diff(Seq(player))
+        allImplicitRoles.foreach(r => if (!allRoles.exists(ReflectiveHelper.isInstanceOf(r, _))) {
           throw new RuntimeException(s"Role implication constraint violation: '$player' should play role '$r', but it does not!")
         })
     }
   }
 
-  private def checkEquivalence(player: Any, role: Any): Unit = {
-    roleEquivalents.nodes().asScala.filter(isInstanceOf(_, role)).toList match {
+  private[this] def checkEquivalence(player: AnyRef, role: AnyRef): Unit = {
+    roleEquivalents.nodes().asScala.filter(ReflectiveHelper.isInstanceOf(_, role)).toList match {
       case Nil => //done, thanks
       case list =>
         val allEquivalentRoles = list.flatMap(Graphs.reachableNodes(roleEquivalents, _).asScala)
-        val allRoles = plays.getRoles(player).diff(Seq(player))
-        allEquivalentRoles.foreach(r => if (!allRoles.exists(isInstanceOf(r, _))) {
+        val allRoles = plays.roles(player).diff(Seq(player))
+        allEquivalentRoles.foreach(r => if (!allRoles.exists(ReflectiveHelper.isInstanceOf(r, _))) {
           throw new RuntimeException(s"Role equivalence constraint violation: '$player' should play role '$r', but it does not!")
         })
     }
   }
 
-  private def checkProhibitions(player: Any, role: Any): Unit = {
-    roleProhibitions.nodes().asScala.filter(isInstanceOf(_, role)).toList match {
+  private[this] def checkProhibitions(player: AnyRef, role: AnyRef): Unit = {
+    roleProhibitions.nodes().asScala.filter(ReflectiveHelper.isInstanceOf(_, role)).toList match {
       case Nil => //done, thanks
       case list =>
         val allProhibitedRoles = list.flatMap(Graphs.reachableNodes(roleProhibitions, _).asScala).toSet
-        val allRoles = plays.getRoles(player).diff(Seq(player))
+        val allRoles = plays.roles(player).diff(Seq(player))
         val rs = if (allProhibitedRoles.size == allRoles.size) {
           Set.empty[String]
         } else {
-          allProhibitedRoles.filter(r => allRoles.exists(isInstanceOf(r, _)))
+          allProhibitedRoles.filter(r => allRoles.exists(ReflectiveHelper.isInstanceOf(r, _)))
         }
-        allProhibitedRoles.diff(rs).diff(list.toSet).foreach(r => if (allRoles.exists(isInstanceOf(r, _))) {
+        allProhibitedRoles.diff(rs).diff(list.toSet).foreach(r => if (allRoles.exists(ReflectiveHelper.isInstanceOf(r, _))) {
           throw new RuntimeException(s"Role prohibition constraint violation: '$player' plays role '$r', but it is not allowed to do so!")
         })
     }
@@ -70,7 +69,7 @@ trait RoleConstraints {
     * @tparam A type of role A
     * @tparam B type of role B that should be played implicitly if A is played
     */
-  def RoleImplication[A: ClassTag, B: ClassTag](): Unit = {
+  def RoleImplication[A <: AnyRef : ClassTag, B <: AnyRef : ClassTag](): Unit = {
     val rA = classTag[A].toString
     val rB = classTag[B].toString
     val _ = roleImplications.putEdge(rA, rB)
@@ -84,7 +83,7 @@ trait RoleConstraints {
     * @tparam A type of role A that should be played implicitly if B is played
     * @tparam B type of role B that should be played implicitly if A is played
     */
-  def RoleEquivalence[A: ClassTag, B: ClassTag](): Unit = {
+  def RoleEquivalence[A <: AnyRef : ClassTag, B <: AnyRef : ClassTag](): Unit = {
     val rA = classTag[A].toString
     val rB = classTag[B].toString
     val _ = (roleEquivalents.putEdge(rA, rB), roleEquivalents.putEdge(rB, rA))
@@ -98,7 +97,7 @@ trait RoleConstraints {
     * @tparam A type of role A
     * @tparam B type of role B that is not allowed to be played if A is played already
     */
-  def RoleProhibition[A: ClassTag, B: ClassTag](): Unit = {
+  def RoleProhibition[A <: AnyRef : ClassTag, B <: AnyRef : ClassTag](): Unit = {
     val rA = classTag[A].toString
     val rB = classTag[B].toString
     val _ = roleProhibitions.putEdge(rA, rB)
@@ -113,7 +112,7 @@ trait RoleConstraints {
     */
   def RoleConstraintsChecked(func: => Unit): Unit = {
     func
-    plays.allPlayers.foreach(p => plays.getRoles(p).diff(Seq(p)).foreach(r => validateConstraints(p, r)))
+    plays.allPlayers.foreach(p => plays.roles(p).diff(Seq(p)).foreach(r => validateConstraints(p, r)))
   }
 
   /**
@@ -123,7 +122,7 @@ trait RoleConstraints {
     * @param player the player instance to check
     * @param role   the role instance to check
     */
-  private def validateConstraints(player: Any, role: Any): Unit = {
+  private[this] def validateConstraints(player: AnyRef, role: AnyRef): Unit = {
     checkImplications(player, role)
     checkEquivalence(player, role)
     checkProhibitions(player, role)

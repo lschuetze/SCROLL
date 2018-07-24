@@ -60,6 +60,28 @@ class RoleFeaturesTest extends FeatureSpec with GivenWhenThen with Matchers {
       }
     }
 
+    scenario("Role playing and testing isPlaying") {
+      Given("some players and roles in a compartment")
+      val someCoreA = new CoreA()
+      val someCoreB = new CoreB()
+
+      new SomeCompartment() {
+        val someRoleA = new RoleA()
+        val someRoleB = new RoleB()
+        And("a play relationship")
+        someCoreA play someRoleA
+
+        When("calling is Playing")
+        Then("it should return false if the role is not played")
+        someCoreA.isPlaying[RoleB] shouldBe false
+        And("it should return false is the player is not in the role playing graph yet")
+        someCoreB.isPlaying[RoleA] shouldBe false
+        someCoreB.isPlaying[RoleB] shouldBe false
+        And("it should return true if the role is actually played")
+        someCoreA.isPlaying[RoleA] shouldBe true
+      }
+    }
+
     scenario("Handling applyDynamic") {
       Given("some players and role in a compartment")
       val someCoreA = new CoreA()
@@ -428,7 +450,7 @@ class RoleFeaturesTest extends FeatureSpec with GivenWhenThen with Matchers {
     }
 
     And("an new instance of that compartment")
-    val c: ACompartment = new ACompartment {
+    new ACompartment {
       When("defining a play relationship")
       this play new ARole
       Then("That compartment should be able to play that role")
@@ -469,6 +491,26 @@ class RoleFeaturesTest extends FeatureSpec with GivenWhenThen with Matchers {
       actualVal4 shouldBe expectedVal
       actualVal5 shouldBe expectedVal
       actualVal6 shouldBe expectedVal
+    }
+  }
+
+  scenario("Handling null arguments for applyDynamic") {
+    Given("a player and a role in a compartment")
+    val someCoreA = new CoreA()
+
+    new SomeCompartment() {
+      val someRoleA = new RoleA()
+      val expected: String = "valueC"
+      And("a play relationship")
+      val p = someCoreA play someRoleA
+      var actual: String = p.valueC
+      actual shouldBe expected
+      When("passing null")
+      Then("no exception should be thrown")
+      p.update(null)
+      And("the field should be set correctly")
+      actual = p.valueC
+      actual shouldBe null
     }
   }
 }

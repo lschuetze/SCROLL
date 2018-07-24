@@ -1,7 +1,5 @@
 package scroll.internal.graph
 
-import scroll.internal.support.DispatchQuery
-
 import scala.reflect.ClassTag
 
 /**
@@ -14,6 +12,27 @@ trait RoleGraph {
     * @param other the RoleGraph to merge with.
     */
   def merge(other: RoleGraph): Unit
+
+  /**
+    * Combines this with another RoleGraph given as other.
+    *
+    * @param other the RoleGraph to combine with.
+    */
+  def combine(other: RoleGraph): Unit
+
+  /**
+    * RoleGraph given as other would get part of this.
+    *
+    * @param other the RoleGraph for integration in this one.
+    */
+  def addPart(other: RoleGraph): Unit
+
+  /**
+    * RoleGraph given as other would get part of this and set both to this.
+    *
+    * @param other the RoleGraph for integration in this one and set as this.
+    */
+  def addPartAndCombine(other: RoleGraph): Unit
 
   /**
     * Removes all players and plays-relationships specified in other from this RoleGraph.
@@ -53,16 +72,23 @@ trait RoleGraph {
     *
     * @return a Seq of all players
     */
-  def allPlayers: Seq[Any]
+  def allPlayers: Seq[AnyRef]
 
   /**
     * Returns a Seq of all roles attached to the given player (core object).
     *
-    * @param player        the player instance to get the roles for
-    * @param dispatchQuery the strategy used to get all roles while traversing the role-playing graph, standard is DFS
-    * @return a Seq of all roles of core
+    * @param player the player instance to get the roles for
+    * @return a Seq of all roles of core player including the player object itself. Returns an empty Seq if the given player is not in the role-playing graph.
     */
-  def getRoles(player: Any)(implicit dispatchQuery: DispatchQuery = DispatchQuery.empty): Seq[Any]
+  def roles(player: AnyRef): Seq[AnyRef]
+
+  /**
+    * Returns a Seq of all facets attached to the given player (core object).
+    *
+    * @param player the player instance to get the facets for
+    * @return a Seq of all facets of core player including the player object itself. Returns an empty Seq if the given player is not in the role-playing graph.
+    */
+  def facets(player: AnyRef): Seq[Enumeration#Value]
 
   /**
     * Checks if the role graph contains the given player.
@@ -70,15 +96,14 @@ trait RoleGraph {
     * @param player the player instance to check
     * @return true if the role graph contains the given player, false otherwise
     */
-  def containsPlayer(player: Any): Boolean
+  def containsPlayer(player: AnyRef): Boolean
 
   /**
     * Returns a list of all predecessors of the given player, i.e. a transitive closure
     * of its cores (deep roles).
     *
-    * @param player        the player instance to calculate the cores of
-    * @param dispatchQuery the strategy used to get all predecessors while traversing the role-playing graph, standard is DFS
+    * @param player the player instance to calculate the cores of
     * @return a list of all predecessors of the given player
     */
-  def getPredecessors(player: Any)(implicit dispatchQuery: DispatchQuery = DispatchQuery.empty): Seq[Any]
+  def predecessors(player: AnyRef): Seq[AnyRef]
 }

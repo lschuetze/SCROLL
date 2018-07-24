@@ -4,30 +4,32 @@ package scroll.internal.formal
   * Companion object for the formal representation of the constraint model.
   */
 object FormalConstraintModel {
-  def empty[NT >: Null, RT >: Null, CT >: Null, RST >: Null]: FormalConstraintModel[NT, RT, CT, RST] = FormalConstraintModel[NT, RT, CT, RST](Map.empty, Map.empty, List.empty)
+  def empty[NT >: Null <: AnyRef, RT >: Null <: AnyRef, CT >: Null <: AnyRef, RST >: Null <: AnyRef]: FormalConstraintModel[NT, RT, CT, RST] =
+    FormalConstraintModel[NT, RT, CT, RST](Map.empty, Map.empty, List.empty)
 
   /**
     * Little helper factory method for creating a constraint model with Strings only.
     */
-  def forStrings(rolec: Map[String, List[((Int, Int), Any)]],
+  def forStrings(rolec: Map[String, List[((Int, Int), AnyRef)]],
                  card: Map[String, ((Int, Int), (Int, Int))],
-                 intra: List[(String, (List[(String, String)]) => Boolean)]): FormalConstraintModel[String, String, String, String] = FormalConstraintModel(rolec, card, intra)
+                 intra: List[(String, (List[(String, String)]) => Boolean)]): FormalConstraintModel[String, String, String, String] =
+    FormalConstraintModel(rolec, card, intra)
 }
 
 /**
   * Class representation of the Constraint Model.
   *
   * @param rolec the role constraints
-  * @param card cardinality mappings
+  * @param card  cardinality mappings
   * @param intra intra-relationship constraints
-  * @tparam NT type of naturals
-  * @tparam RT type of roles
-  * @tparam CT type of compartments
+  * @tparam NT  type of naturals
+  * @tparam RT  type of roles
+  * @tparam CT  type of compartments
   * @tparam RST type of relationships
   */
-case class FormalConstraintModel[NT >: Null, RT >: Null, CT >: Null, RST >: Null](rolec: Map[CT, List[((Int, Int), Any)]],
-                                                                                  card: Map[RST, ((Int, Int), (Int, Int))],
-                                                                                  intra: List[(RST, (List[(NT, NT)]) => Boolean)]) {
+case class FormalConstraintModel[NT >: Null <: AnyRef, RT >: Null <: AnyRef, CT >: Null <: AnyRef, RST >: Null <: AnyRef](rolec: Map[CT, List[((Int, Int), AnyRef)]],
+                                                                                                                          card: Map[RST, ((Int, Int), (Int, Int))],
+                                                                                                                          intra: List[(RST, (List[(NT, NT)]) => Boolean)]) {
 
   /**
     * @param crom the CROM instance to check against
@@ -36,7 +38,7 @@ case class FormalConstraintModel[NT >: Null, RT >: Null, CT >: Null, RST >: Null
   def compliant(crom: FormalCROM[NT, RT, CT, RST]): Boolean = crom.wellformed && axiom12(crom)
 
   def axiom12(crom: FormalCROM[NT, RT, CT, RST]): Boolean =
-    FormalUtils.all(for (ct1 <- crom.ct if rolec.contains(ct1); (crd, a) <- rolec(ct1)) yield
+    FormalUtils.all(for (ct1 <- crom.ct if rolec.contains(ct1); (_, a) <- rolec(ct1)) yield
       FormalUtils.atoms(a).toSet.subsetOf(crom.parts(ct1).toSet)
     )
 
@@ -57,7 +59,7 @@ case class FormalConstraintModel[NT >: Null, RT >: Null, CT >: Null, RST >: Null
 
   def axiom14(crom: FormalCROM[NT, RT, CT, RST], croi: FormalCROI[NT, RT, CT, RST]): Boolean =
   // TODO: fix asInstanceOf
-    FormalUtils.all(for ((o, c, r) <- croi.plays if rolec.contains(croi.type1(c).asInstanceOf[CT]); (crd, a) <- rolec(croi.type1(c).asInstanceOf[CT]) if FormalUtils.atoms(a).contains(croi.type1(r))) yield
+    FormalUtils.all(for ((o, c, r) <- croi.plays if rolec.contains(croi.type1(c).asInstanceOf[CT]); (_, a) <- rolec(croi.type1(c).asInstanceOf[CT]) if FormalUtils.atoms(a).contains(croi.type1(r))) yield
       FormalUtils.evaluate(a, croi, o, c) == 1
     )
 

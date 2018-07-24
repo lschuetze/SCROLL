@@ -1,11 +1,12 @@
 package scroll.internal.graph
 
-import com.google.common.graph.{GraphBuilder, Graphs}
-import scroll.internal.support.DispatchQuery
+import com.google.common.graph.GraphBuilder
+import com.google.common.graph.Graphs
+import com.google.common.graph.MutableGraph
 
-import scala.reflect.ClassTag
-import collection.JavaConverters._
+import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.reflect.ClassTag
 
 /**
   * Scala specific implementation of a [[scroll.internal.graph.RoleGraph]] using
@@ -15,42 +16,116 @@ import scala.collection.mutable
   */
 class ScalaRoleGraph(checkForCycles: Boolean = true) extends RoleGraph {
 
-  private var root = GraphBuilder.directed().build[Object]()
+  protected val MERGE_MESSAGE: String = "You can only merge RoleGraphs of the same type!"
 
-  override def merge(other: RoleGraph): Unit = {
+  private var root: MutableGraph[Object] = GraphBuilder.directed().build[Object]()
+
+  private[this] def checkAndMerge(source: MutableGraph[Object], target: MutableGraph[Object]): Unit =
+    (source.nodes().size, target.nodes().size) match {
+      case (_, t) if t == 0 => //do nothing; source is correct
+      case (s, _) if s == 0 =>
+        //take target because source is empty:
+        root = target
+        checkCycles()
+      case (s, t) if s < t =>
+        source.edges().forEach(p => {
+          val _ = target.putEdge(p.source(), p.target())
+        })
+        root = target
+        checkCycles()
+      case _ =>
+        // default case:
+        target.edges().forEach(p => {
+          val _ = root.putEdge(p.source(), p.target())
+        })
+        checkCycles()
+    }
+
+
+  override def combine(other: RoleGraph): Unit = {
     require(null != other)
-    require(other.isInstanceOf[ScalaRoleGraph], "You can only merge RoleGraphs of the same type!")
+    require(other.isInstanceOf[ScalaRoleGraph], MERGE_MESSAGE)
 
-    val source = root
     val target = other.asInstanceOf[ScalaRoleGraph].root
 
-    if (source.nodes().isEmpty && target.nodes().isEmpty) return
+    //do nothing source is correct
+    if (target.nodes().isEmpty) {
+      other.asInstanceOf[ScalaRoleGraph].root = root
+      return
+    }
 
-    if (source.nodes().isEmpty && !target.nodes().isEmpty) {
+    if (root.nodes().isEmpty) {
+      //take target because source is empty
       root = target
       checkCycles()
       return
     }
 
-    if (!source.nodes().isEmpty && target.nodes().isEmpty) return
-
-    if (source.nodes().size < target.nodes().size) {
-      source.edges().asScala.foreach(p => target.putEdge(p.source(), p.target()))
+    if (root.nodes().size < target.nodes().size) {
+      root.edges().forEach(p => {
+        val _ = target.putEdge(p.source(), p.target())
+      })
       root = target
     } else {
-      target.edges().asScala.foreach(p => root.putEdge(p.source(), p.target()))
+      target.edges().forEach(p => {
+        val _ = root.putEdge(p.source(), p.target())
+      })
+      other.asInstanceOf[ScalaRoleGraph].root = root
     }
     checkCycles()
+  }
+
+  override def addPart(other: RoleGraph): Unit = {
+    require(null != other)
+    require(other.isInstanceOf[ScalaRoleGraph], MERGE_MESSAGE)
+
+    val source = root
+    val target = other.asInstanceOf[ScalaRoleGraph].root
+
+    //do nothing source is correct
+    if (target.nodes().isEmpty) return
+
+    if (source.nodes().isEmpty) {
+      //take target because source is empty
+      root = target
+      checkCycles()
+      return
+    }
+
+    target.edges().forEach(p => {
+      val _ = root.putEdge(p.source(), p.target())
+    })
+    checkCycles()
+  }
+
+  override def addPartAndCombine(other: RoleGraph): Unit = {
+    require(null != other)
+    require(other.isInstanceOf[ScalaRoleGraph], MERGE_MESSAGE)
+
+    val target = other.asInstanceOf[ScalaRoleGraph].root
+
+    if (target.nodes().isEmpty) return
+
+    target.edges().forEach(p => {
+      val _ = root.putEdge(p.source(), p.target())
+    })
+    checkCycles()
+  }
+
+  override def merge(other: RoleGraph): Unit = {
+    require(null != other)
+    require(other.isInstanceOf[ScalaRoleGraph], MERGE_MESSAGE)
+    checkAndMerge(root, other.asInstanceOf[ScalaRoleGraph].root)
   }
 
   override def detach(other: RoleGraph): Unit = {
     require(null != other)
     other.allPlayers.foreach(pl =>
-      other.getRoles(pl).foreach(rl =>
-        removeBinding(pl.asInstanceOf[AnyRef], rl.asInstanceOf[AnyRef])))
+      other.roles(pl).foreach(rl =>
+        removeBinding(pl, rl)))
   }
 
-  private def checkCycles(): Unit = {
+  private[this] def checkCycles(): Unit = {
     if (checkForCycles) {
       if (Graphs.hasCycle(root)) {
         throw new RuntimeException(s"Cyclic role-playing relationship found!")
@@ -78,24 +153,54 @@ class ScalaRoleGraph(checkForCycles: Boolean = true) extends RoleGraph {
     val _ = root.removeNode(player)
   }
 
-  override def getRoles(player: Any)(implicit dispatchQuery: DispatchQuery = DispatchQuery.empty): Seq[Any] = {
+  override def roles(player: AnyRef): Seq[AnyRef] = {
     require(null != player)
-    Graphs.reachableNodes(root, player).asScala.toSeq
+    if (containsPlayer(player)) {
+      val returnSeq = new mutable.ListBuffer[Object]
+      val processing = new mutable.Queue[Object]
+      returnSeq += player.asInstanceOf[Object]
+      root.successors(player.asInstanceOf[Object]).forEach(n => if (!n.isInstanceOf[Enumeration#Value]) processing.enqueue(n))
+      while (processing.nonEmpty) {
+        val next = processing.dequeue()
+        if (!returnSeq.contains(next)) {
+          returnSeq += next
+        }
+        root.successors(next).forEach(n => if (!n.isInstanceOf[Enumeration#Value]) processing.enqueue(n))
+      }
+      returnSeq
+    } else {
+      Seq.empty
+    }
   }
 
-  override def containsPlayer(player: Any): Boolean = root.nodes().contains(player)
+  override def facets(player: AnyRef): Seq[Enumeration#Value] = {
+    require(null != player)
+    if (containsPlayer(player)) {
+      val returnSeq = new mutable.ListBuffer[Enumeration#Value]
+      root.successors(player.asInstanceOf[Object]).forEach {
+        case e: Enumeration#Value => returnSeq += e
+        case _ =>
+      }
+      returnSeq
+    } else {
+      Seq.empty
+    }
+  }
 
-  override def allPlayers: Seq[Any] = root.nodes().asScala.toSeq
+  override def containsPlayer(player: AnyRef): Boolean = root.nodes().contains(player)
 
-  override def getPredecessors(player: Any)(implicit dispatchQuery: DispatchQuery = DispatchQuery.empty): Seq[Any] = {
-    val returnSeq = new mutable.ListBuffer[Any]
-    val processing = new mutable.Queue[Any]
-    root.predecessors(player).forEach(n => processing.enqueue(n))
+  override def allPlayers: Seq[AnyRef] = root.nodes().asScala.toSeq
+
+  override def predecessors(player: AnyRef): Seq[AnyRef] = {
+    val returnSeq = new mutable.ListBuffer[Object]
+    val processing = new mutable.Queue[Object]
+    root.predecessors(player.asInstanceOf[Object]).forEach(n => if (!n.isInstanceOf[Enumeration#Value]) processing.enqueue(n))
     while (processing.nonEmpty) {
       val next = processing.dequeue()
-      if (!returnSeq.contains(next))
+      if (!returnSeq.contains(next)) {
         returnSeq += next
-      root.predecessors(next).forEach(n => processing.enqueue(n))
+      }
+      root.predecessors(next).forEach(n => if (!n.isInstanceOf[Enumeration#Value]) processing.enqueue(n))
     }
     returnSeq
   }

@@ -1,19 +1,19 @@
 package scroll.internal.graph
 
-import scroll.internal.support.DispatchQuery
 import scroll.internal.util.Memoiser
 
 import scala.reflect.ClassTag
 
 class CachedScalaRoleGraph(checkForCycles: Boolean = true) extends ScalaRoleGraph(checkForCycles) with Memoiser {
 
-  private class BooleanCache extends Memoised[Any, Boolean]
+  private[this] class BooleanCache extends Memoised[AnyRef, Boolean]
 
-  private class SeqCache extends Memoised[Any, Seq[Any]]
+  private[this] class SeqCache[E] extends Memoised[AnyRef, Seq[E]]
 
-  private val containsCache = new BooleanCache()
-  private val predCache = new SeqCache()
-  private val rolesCache = new SeqCache()
+  private[this] val containsCache = new BooleanCache()
+  private[this] val predCache = new SeqCache[AnyRef]()
+  private[this] val rolesCache = new SeqCache[AnyRef]()
+  private[this] val facetsCache = new SeqCache[Enumeration#Value]()
 
   override def addBinding[P <: AnyRef : ClassTag, R <: AnyRef : ClassTag](player: P, role: R): Unit = {
     super.addBinding(player, role)
@@ -21,35 +21,58 @@ class CachedScalaRoleGraph(checkForCycles: Boolean = true) extends ScalaRoleGrap
     reset(role)
   }
 
-  private def resetAll(): Unit = {
+  private[this] def resetAll(): Unit = {
     containsCache.reset()
     predCache.reset()
     rolesCache.reset()
+    facetsCache.reset()
   }
 
-  private def reset(o: Any): Unit = {
+  private[this] def reset(o: AnyRef): Unit = {
     containsCache.resetAt(o)
     predCache.resetAt(o)
     rolesCache.resetAt(o)
+    facetsCache.resetAt(o)
   }
 
-  override def containsPlayer(player: Any): Boolean =
+  override def containsPlayer(player: AnyRef): Boolean =
     containsCache.getAndPutWithDefault(player, super.containsPlayer(player))
 
   override def detach(other: RoleGraph): Unit = {
-    require(other.isInstanceOf[CachedScalaRoleGraph], "You can only detach RoleGraphs of the same type!")
+    require(other.isInstanceOf[CachedScalaRoleGraph], MERGE_MESSAGE)
     super.detach(other)
     resetAll()
   }
 
-  override def getPredecessors(player: Any)(implicit dispatchQuery: DispatchQuery): Seq[Any] =
-    predCache.getAndPutWithDefault(player, super.getPredecessors(player))
+  override def predecessors(player: AnyRef): Seq[AnyRef] =
+    predCache.getAndPutWithDefault(player, super.predecessors(player))
 
-  override def getRoles(player: Any)(implicit dispatchQuery: DispatchQuery): Seq[Any] =
-    rolesCache.getAndPutWithDefault(player, super.getRoles(player))
+  override def roles(player: AnyRef): Seq[AnyRef] =
+    rolesCache.getAndPutWithDefault(player, super.roles(player))
+
+  override def facets(player: AnyRef): Seq[Enumeration#Value] =
+    facetsCache.getAndPutWithDefault(player, super.facets(player))
+
+  override def combine(other: RoleGraph): Unit = {
+    require(other.isInstanceOf[CachedScalaRoleGraph], MERGE_MESSAGE)
+    super.combine(other)
+    resetAll()
+  }
+
+  override def addPart(other: RoleGraph): Unit = {
+    require(other.isInstanceOf[CachedScalaRoleGraph], MERGE_MESSAGE)
+    super.addPart(other)
+    resetAll()
+  }
+
+  override def addPartAndCombine(other: RoleGraph): Unit = {
+    require(other.isInstanceOf[CachedScalaRoleGraph], MERGE_MESSAGE)
+    super.addPartAndCombine(other)
+    resetAll()
+  }
 
   override def merge(other: RoleGraph): Unit = {
-    require(other.isInstanceOf[CachedScalaRoleGraph], "You can only merge RoleGraphs of the same type!")
+    require(other.isInstanceOf[CachedScalaRoleGraph], MERGE_MESSAGE)
     super.merge(other)
     resetAll()
   }

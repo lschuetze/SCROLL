@@ -1,15 +1,19 @@
-val akkaVersion = "2.4.12"
-val shapelessVersion = "2.3.2"
-val scalatestVersion = "3.0.1"
-val chocoVersion = "4.0.0"
-val slf4jVersion = "1.7.21"
-val macrosVersion = "2.1.0"
-val scalaloggingVersion = "3.5.0"
-val guavaVersion = "21.0"
+val akkaVersion = "2.5.13"
+val shapelessVersion = "2.3.3"
+val scalatestVersion = "3.0.5"
+val chocoVersion = "4.0.6"
+val slf4jVersion = "1.7.25"
+val guavaVersion = "25.1-jre"
+val emfcommonVersion = "2.12.0"
+val emfecoreVersion = "2.12.0"
+val umlVersion = "3.1.0.v201006071150"
+
+lazy val noPublishSettings =
+  Seq(publish := {}, publishLocal := {}, publishArtifact := false)
 
 lazy val commonSettings = Seq(
-  scalaVersion := "2.12.3",
-  version := "1.3.1",
+  scalaVersion := "2.12.6",
+  version := "1.5",
   mainClass := None,
   resolvers ++= Seq(
     "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
@@ -22,9 +26,9 @@ lazy val commonSettings = Seq(
     "org.choco-solver" % "choco-solver" % chocoVersion,
     "org.slf4j" % "slf4j-simple" % slf4jVersion,
     "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-    "org.eclipse.emf" % "org.eclipse.emf.common" % "2.11.0-v20150805-0538",
-    "org.eclipse.emf" % "org.eclipse.emf.ecore" % "2.11.1-v20150805-0538",
-    "org.eclipse.uml2" % "org.eclipse.uml2.uml" % "3.1.0.v201006071150"
+    "org.eclipse.emf" % "org.eclipse.emf.common" % emfcommonVersion,
+    "org.eclipse.emf" % "org.eclipse.emf.ecore" % emfecoreVersion,
+    "org.eclipse.uml2" % "org.eclipse.uml2.uml" % umlVersion
   ),
   javacOptions in Compile ++= Seq("-source", "1.8", "-target", "1.8"),
   scalacOptions ++= Seq(
@@ -40,7 +44,7 @@ lazy val commonSettings = Seq(
 
 lazy val root = (project in file(".")).settings(
   name := "SCROLLRoot"
-).aggregate(core, tests, examples)
+).settings(noPublishSettings: _*).aggregate(core, tests, examples)
 
 lazy val core = (project in file("core")).
   settings(commonSettings: _*).
@@ -94,7 +98,15 @@ lazy val examples = (project in file("examples")).
 lazy val tests = (project in file("tests")).
   settings(commonSettings: _*).
   settings(
+    commands += Command.command("testUntilFailed") { state =>"test" :: "testUntilFailed" :: state },
     testOptions in Test := Seq(Tests.Filter(s => s.endsWith("Suite"))),
-    parallelExecution in Test := false,
     libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % scalatestVersion % "test")
   ).dependsOn(core, examples)
+
+lazy val benchmark = (project in file("benchmark")).
+  settings(commonSettings: _*).
+  dependsOn(core).
+  enablePlugins(JmhPlugin).
+  settings(
+    mainClass in(Jmh, run) := Some("scroll.benchmarks.RunnerApp")
+  )

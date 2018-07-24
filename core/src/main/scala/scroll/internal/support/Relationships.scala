@@ -2,6 +2,7 @@ package scroll.internal.support
 
 import scroll.internal.Compartment
 import scroll.internal.util.Many
+
 import scala.reflect.ClassTag
 
 /**
@@ -39,11 +40,16 @@ trait Relationships {
 
     case class RangeMultiplicity(from: ExpMultiplicity, to: ExpMultiplicity) extends Multiplicity
 
-    def apply(name: String) = new {
-      def from[L: ClassTag](leftMul: Multiplicity) = new {
-        def to[R: ClassTag](rightMul: Multiplicity): Relationship[L, R] = new Relationship(name, leftMul, rightMul)
-      }
+    protected class ToBuilder[L <: AnyRef : ClassTag](name: String, leftMul: Multiplicity) {
+      def to[R <: AnyRef : ClassTag](rightMul: Multiplicity): Relationship[L, R] =
+        new Relationship[L, R](name, leftMul, rightMul)
     }
+
+    protected class FromBuilder(name: String) {
+      def from[L <: AnyRef : ClassTag](leftMul: Multiplicity): ToBuilder[L] = new ToBuilder[L](name, leftMul)
+    }
+
+    def apply(name: String): FromBuilder = new FromBuilder(name)
 
   }
 
@@ -56,18 +62,23 @@ trait Relationships {
     * @tparam L type of the role of the left side of the relationship
     * @tparam R type of the role of the right side of the relationship
     */
-  class Relationship[L: ClassTag, R: ClassTag](name: String,
-                                               var leftMul: Multiplicity,
-                                               var rightMul: Multiplicity) {
+  class Relationship[L <: AnyRef : ClassTag, R <: AnyRef : ClassTag](name: String,
+                                                                     var leftMul: Multiplicity,
+                                                                     var rightMul: Multiplicity) {
 
-    private def checkMul[T](m: Multiplicity, on: Seq[T]): Seq[T] = {
+    private[this] def checkMul[T](m: Multiplicity, on: Seq[T]): Seq[T] = {
       m match {
-        case MMany() => assert(on.nonEmpty, s"With left multiplicity for '$name' of '*', the resulting role set should not be empty!")
-        case ConcreteValue(v) => assert(v.compare(on.size) == 0, s"With a concrete multiplicity for '$name' of '$v' the resulting role set should have the same size!")
+        case MMany() =>
+          assert(on.nonEmpty, s"With left multiplicity for '$name' of '*', the resulting role set should not be empty!")
+        case ConcreteValue(v) =>
+          assert(v.compare(on.size) == 0, s"With a concrete multiplicity for '$name' of '$v' the resulting role set should have the same size!")
         case RangeMultiplicity(f, t) => (f, t) match {
-          case (ConcreteValue(v1), ConcreteValue(v2)) => assert(v1 <= on.size && v2 >= on.size, s"With a multiplicity for '$name' from '$v1' to '$v2', the resulting role set size should be in between!")
-          case (ConcreteValue(v), MMany()) => assert(v <= on.size, s"With a multiplicity for '$name' from '$v' to '*', the resulting role set size should be in between!")
-          case _ => throw new RuntimeException("This multiplicity is not allowed!") // default case
+          case (ConcreteValue(v1), ConcreteValue(v2)) =>
+            assert(v1 <= on.size && v2 >= on.size, s"With a multiplicity for '$name' from '$v1' to '$v2', the resulting role set size should be in between!")
+          case (ConcreteValue(v), MMany()) =>
+            assert(v <= on.size, s"With a multiplicity for '$name' from '$v' to '*', the resulting role set size should be in between!")
+          case _ =>
+            throw new RuntimeException("This multiplicity is not allowed!") // default case
         }
         case _ => throw new RuntimeException("This multiplicity is not allowed!") // default case
       }
